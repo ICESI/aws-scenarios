@@ -1,0 +1,22 @@
+[
+    {
+        "ParameterKey": "cidrBlock",
+        "ParameterValue": "10.0.2.0/24"
+    },
+    {
+        "ParameterKey": "privateSubnetRange1",
+        "ParameterValue": "10.0.2.0/26"
+    },
+    {
+        "ParameterKey": "privateSubnetRange2",
+        "ParameterValue": "10.0.2.64/26"
+    },
+    {
+        "ParameterKey": "privateSubnetRange3",
+        "ParameterValue": "10.0.2.128/26"
+    },
+    {
+        "ParameterKey": "publicSubnetRange",
+        "ParameterValue": "10.0.2.192/26"
+    }
+]
