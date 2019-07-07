@@ -16,7 +16,7 @@ Parameters:
     Type: String
     Default: 
 
-  haproxyARNCertificate:
+  nginxARNCertificate:
     Description: 
     Type: String
     Default: 
@@ -26,9 +26,9 @@ Conditions:
 
 Resources:
 
-  ##### haproxy Instance
+  ##### nginx Instance
 
-  haproxySecurityGroup:
+  nginxSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
         GroupDescription: Application Server
@@ -56,7 +56,7 @@ Resources:
           ToPort: 80
           CidrIp: 0.0.0.0/0
 
-  haproxyLBSecurityGroup:
+  nginxLBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
         GroupDescription: Allow S3 file access through a proxy
@@ -80,11 +80,11 @@ Resources:
           ToPort: -1
           CidrIp: 0.0.0.0/0
 
-  haproxyInstanceAZ1:
+  nginxInstanceAZ1:
     Type: "AWS::EC2::Instance"
     Properties:
       ImageId: "ami-0c6b1d09930fac512"  # amazon linux
-      KeyName: "credentials-admin"
+      KeyName: "dbarragan"
       InstanceType: "t2.micro"
       Tenancy: "default"
       Monitoring: false
@@ -95,34 +95,13 @@ Resources:
         Fn::Base64: !Sub
         - |
           #!/bin/bash -ex
-          yum install haproxy -y
-          rm /etc/haproxy/haproxy.cfg
-          cat << 'EOT' > /etc/haproxy/haproxy.cfg
-          global
-              daemon
-              maxconn 256
-
-          defaults
-              mode http
-              log global
-              timeout connect 5000ms
-              timeout client 50000ms
-              timeout server 50000ms
-
-          frontend http-in
-              bind *:80
-              default_backend app
-
-          backend app
-              balance     roundrobin
-              server app1 127.0.0.1:5000 check
-          EOT
-          systemctl start haproxy
-          systemctl enable haproxy
+          yum install nginx -y
+          systemctl start nginx
+          systemctl enable nginx
       Tags:
         -
           Key: Name
-          Value: HAProxy
+          Value: nginx
       BlockDeviceMappings: 
         - 
           DeviceName: "/dev/xvda"
@@ -138,13 +117,13 @@ Resources:
           SubnetId: !ImportValue infraPrivateSubnet1
           Ipv6AddressCount: 0
           GroupSet: 
-            - !Ref haproxySecurityGroup
+            - !Ref nginxSecurityGroup
 
-  haproxyInstanceAZ2:
+  nginxInstanceAZ2:
   Type: "AWS::EC2::Instance"
   Properties:
     ImageId: "ami-0c6b1d09930fac512"  # amazon linux
-    KeyName: "credentials-admin"
+    KeyName: "dbarragan"
     InstanceType: "t2.micro"
     Tenancy: "default"
     Monitoring: false
@@ -155,34 +134,13 @@ Resources:
       Fn::Base64: !Sub
       - |
         #!/bin/bash -ex
-        yum install haproxy -y
-        rm /etc/haproxy/haproxy.cfg
-        cat << 'EOT' > /etc/haproxy/haproxy.cfg
-        global
-            daemon
-            maxconn 256
-
-        defaults
-            mode http
-            log global
-            timeout connect 5000ms
-            timeout client 50000ms
-            timeout server 50000ms
-
-        frontend http-in
-            bind *:80
-            default_backend app
-
-        backend app
-            balance     roundrobin
-            server app1 127.0.0.1:5000 check
-        EOT
-        systemctl start haproxy
-        systemctl enable haproxy
+        yum install nginx -y
+        systemctl start nginx
+        systemctl enable nginx
     Tags:
       -
         Key: Name
-        Value: HAProxy
+        Value: nginx
     BlockDeviceMappings: 
       - 
         DeviceName: "/dev/xvda"
@@ -198,36 +156,36 @@ Resources:
         SubnetId: !ImportValue infraPrivateSubnet2
         Ipv6AddressCount: 0
         GroupSet: 
-          - !Ref haproxySecurityGroup
+          - !Ref nginxSecurityGroup
 
-  haproxyRecordSet:
+  nginxRecordSet:
     Type: AWS::Route53::RecordSet
     Condition: createProdResources
     Properties:
       AliasTarget:
-        DNSName: !GetAtt haproxyALB.DNSName
-        HostedZoneId: !GetAtt haproxyALB.CanonicalHostedZoneID
+        DNSName: !GetAtt nginxALB.DNSName
+        HostedZoneId: !GetAtt nginxALB.CanonicalHostedZoneID
       HostedZoneId: !ImportValue infraHostedZone
-      Comment: DNS for HAProxy
+      Comment: DNS for nginx
       Name: !Ref domainName
       Type: A
 
-  haproxyALB:
+  nginxALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       IpAddressType: ipv4
-      Name: haproxyALB
+      Name: nginxALB
       Scheme: internal
       SecurityGroups:
-        - !Ref haproxyLBSecurityGroup
+        - !Ref nginxLBSecurityGroup
       Subnets:
         - !ImportValue infraPrivateSubnet1
         - !ImportValue infraPrivateSubnet2
 
-  haproxyTG:
+  nginxTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: haproxyTG
+      Name: nginxTG
       HealthCheckEnabled: True
       HealthCheckPath: /index.html
       HealthCheckPort: 80
@@ -236,23 +194,23 @@ Resources:
       Protocol: HTTP
       TargetType: instance
       Targets:
-        - Id: !Ref haproxyInstanceAZ1
+        - Id: !Ref nginxInstanceAZ1
           Port: 80
-        - Id: !Ref haproxyInstanceAZ2
+        - Id: !Ref nginxInstanceAZ2
           Port: 80
       VpcId: !ImportValue infraVpc
 
-  haproxyHTTPListener:
+  nginxHTTPListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       Protocol: HTTP
       Port: 80
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref haproxyTG
-      LoadBalancerArn: !Ref haproxyALB
+          TargetGroupArn: !Ref nginxTG
+      LoadBalancerArn: !Ref nginxALB
 
-  haproxyHTTPSListener:
+  nginxHTTPSListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Condition: createProdResources
     Properties:
@@ -260,8 +218,8 @@ Resources:
       Port: 443
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref haproxyTG
+          TargetGroupArn: !Ref nginxTG
       Certificates:
-        - CertificateArn: !Ref haproxyARNCertificate
-      LoadBalancerArn: !Ref haproxyALB
+        - CertificateArn: !Ref nginxARNCertificate
+      LoadBalancerArn: !Ref nginxALB
 

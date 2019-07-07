@@ -149,7 +149,7 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref natGateway
 
-  ## Public Routing Table ##
+## Public Routing Table ##
 
   publicRoutingTable:
     Type: AWS::EC2::RouteTable
