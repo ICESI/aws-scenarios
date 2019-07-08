@@ -3,18 +3,13 @@
 # exit script immediately if there's an error
 set -e
 
-#!/bin/bash
-
-# exit script immediately if there's an error
-set -e
-
 pushd `dirname $0` > /dev/null
 SCRIPT_PATH=`pwd`
 popd > /dev/null
 
 AWS_REGION=us-east-1
 AWS_PROFILE=aws-scenarios-dev
-STACK_NAME=aws-base-infra
+STACK_NAME=aws-lb-infra
 PARAMS_PATH="${SCRIPT_PATH}/../parameters"
 PARAMETER_JSON="file://$PARAMS_PATH/parameters_lb_prod.json"
 CFN_DIR="${SCRIPT_PATH}/../cfn"
