@@ -1,0 +1,14 @@
+[
+    {
+        "ParameterKey": "peerOwnerId",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "peerVpcId",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "peerRoleArn",
+        "ParameterValue": ""
+    }
+]

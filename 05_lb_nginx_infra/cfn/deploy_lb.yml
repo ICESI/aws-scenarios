@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Hight Availability Application Server"
+
+Parameters:
+
+  environment:
+    Description: Specifies whether the stack is being deployed for development or production
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - production
+
+  # domainName:
+  #   Description: Domain name for the application
+  #   Type: String
+  #   Default: 
+
+  # nginxARNCertificate:
+  #   Description: 
+  #   Type: String
+  #   Default: 
+
+Conditions:
+  createProdResources: !Equals [!Ref environment, production]
+
+Resources:
+
+  ##### nginx Instance
+
+  nginxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Application Server
+        VpcId: !ImportValue infraVpc
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+        SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  nginxLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Allow S3 file access through a proxy
+        VpcId: !ImportValue infraVpc
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+        SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1 
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+
+  nginxInstanceAZ1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-0c6b1d09930fac512"  # amazon linux
+      KeyName: "dbarragan"
+      InstanceType: "t2.micro"
+      Tenancy: "default"
+      Monitoring: false
+      DisableApiTermination: false
+      InstanceInitiatedShutdownBehavior: "stop"
+      EbsOptimized: false
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          amazon-linux-extras install nginx1.12 -y
+          systemctl start nginx
+          systemctl enable nginx
+      Tags:
+        -
+          Key: Name
+          Value: nginx
+      BlockDeviceMappings: 
+        - 
+          DeviceName: "/dev/xvda"
+          Ebs: 
+              VolumeSize: 8
+              DeleteOnTermination: true
+              VolumeType: "gp2"
+      NetworkInterfaces: 
+        - 
+          DeviceIndex: 0
+          Description: "Primary network interface"
+          DeleteOnTermination: true
+          SubnetId: !ImportValue infraPrivateSubnet1
+          Ipv6AddressCount: 0
+          GroupSet: 
+            - !Ref nginxSecurityGroup
+
+  nginxInstanceAZ2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-0c6b1d09930fac512"  # amazon linux
+      KeyName: "dbarragan"
+      InstanceType: "t2.micro"
+      Tenancy: "default"
+      Monitoring: false
+      DisableApiTermination: false
+      InstanceInitiatedShutdownBehavior: "stop"
+      EbsOptimized: false
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -ex
+          amazon-linux-extras install nginx1.12 -y
+          systemctl start nginx
+          systemctl enable nginx
+      Tags:
+        -
+          Key: Name
+          Value: nginx
+      BlockDeviceMappings: 
+        - 
+          DeviceName: "/dev/xvda"
+          Ebs: 
+              VolumeSize: 8
+              DeleteOnTermination: true
+              VolumeType: "gp2"
+      NetworkInterfaces: 
+        - 
+          DeviceIndex: 0
+          Description: "Primary network interface"
+          DeleteOnTermination: true
+          SubnetId: !ImportValue infraPrivateSubnet2
+          Ipv6AddressCount: 0
+          GroupSet: 
+            - !Ref nginxSecurityGroup
+
+  # nginxRecordSet:
+  #   Type: AWS::Route53::RecordSet
+  #   Condition: createProdResources
+  #   Properties:
+  #     AliasTarget:
+  #       DNSName: !GetAtt nginxALB.DNSName
+  #       HostedZoneId: !GetAtt nginxALB.CanonicalHostedZoneID
+  #     HostedZoneId: !ImportValue infraHostedZone
+  #     Comment: DNS for nginx
+  #     Name: !Ref domainName
+  #     Type: A
+
+  nginxALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: nginxALB
+      Scheme: internal
+      SecurityGroups:
+        - !Ref nginxLBSecurityGroup
+      Subnets:
+        - !ImportValue infraPrivateSubnet1
+        - !ImportValue infraPrivateSubnet2
+
+  nginxTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: nginxTG
+      HealthCheckEnabled: True
+      HealthCheckPath: /index.html
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      Targets:
+        - Id: !Ref nginxInstanceAZ1
+          Port: 80
+        - Id: !Ref nginxInstanceAZ2
+          Port: 80
+      VpcId: !ImportValue infraVpc
+
+  nginxHTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref nginxTG
+      LoadBalancerArn: !Ref nginxALB
+
+  # nginxHTTPSListener:
+  #   Type: AWS::ElasticLoadBalancingV2::Listener
+  #   Condition: createProdResources
+  #   Properties:
+  #     Protocol: HTTPS
+  #     Port: 443
+  #     DefaultActions:
+  #       - Type: forward
+  #         TargetGroupArn: !Ref nginxTG
+  #     Certificates:
+  #       - CertificateArn: !Ref nginxARNCertificate
+  #     LoadBalancerArn: !Ref nginxALB
+

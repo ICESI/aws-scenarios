@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  cidrBlock:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: The CIDR block for VPC/Subnet
+
+  privateSubnetRange1:
+    Type: String
+    Default: 10.0.1.0/26
+    Description: Private subnet range
+
+  privateSubnetRange2:
+    Type: String
+    Default: 10.0.1.64/26
+    Description: Private subnet range
+
+  privateSubnetRange3:
+    Type: String
+    Default: 10.0.1.128/26
+    Description: Private subnet range
+
+  publicSubnetRange:
+    Type: String
+    Default: 10.0.1.192/26
+    Description: Public subnet range
+
+  availabilityZoneSubnet1:
+    Type: String
+    Default: us-east-1a
+    Description: AZ for subnet1
+
+  availabilityZoneSubnet2:
+    Type: String
+    Default: us-east-1b
+    Description: AZ for subnet2
+
+  availabilityZoneSubnet3:
+    Type: String
+    Default: us-east-1c
+    Description: AZ for subnet3
+
+Resources:
+
+  mainVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref cidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: Main VPC
+
+  privateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref privateSubnetRange1
+      AvailabilityZone: !Ref availabilityZoneSubnet1
+      VpcId: !Ref mainVpc
+      Tags:
+      - Key: Name
+        Value: Private Subnet 1
+
+  privateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref privateSubnetRange2
+      AvailabilityZone: !Ref availabilityZoneSubnet2
+      VpcId: !Ref mainVpc
+      Tags:
+      - Key: Name
+        Value: Private Subnet 2
+
+  privateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref privateSubnetRange3
+      AvailabilityZone: !Ref availabilityZoneSubnet3
+      VpcId: !Ref mainVpc
+      Tags:
+      - Key: Name
+        Value: Private Subnet 3
+
+  publicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: !Ref publicSubnetRange
+      VpcId: !Ref mainVpc
+      Tags:
+      - Key: Name
+        Value: Public Subnet
+
+  ## Internet gateway for public subnet ##
+
+  internetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  vpcIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref internetGateway
+      VpcId: !Ref mainVpc
+
+  ## NAT gateway for private subnet ##
+
+  natGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt elasticIp.AllocationId
+      SubnetId: !Ref publicSubnet
+
+  elasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+
+  ## Private Routing Table ##
+
+  privateRoutingTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref mainVpc
+
+  privateRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref privateRoutingTable
+      SubnetId: !Ref privateSubnet1
+
+  privateRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref privateRoutingTable
+      SubnetId: !Ref privateSubnet2
+
+  privateRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref privateRoutingTable
+      SubnetId: !Ref privateSubnet3
+
+  defaultRouteToNat:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref privateRoutingTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref natGateway
+
+## Public Routing Table ##
+
+  publicRoutingTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref mainVpc
+
+  publicRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref publicRoutingTable
+      SubnetId: !Ref publicSubnet
+
+  defaultRouteToIg:
+    DependsOn: internetGateway
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref publicRoutingTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref internetGateway
+
+## Outputs ##
+
+Outputs:
+  mainVpc:
+    Description: The main VPC for all Pipeline Services services
+    Value: !Ref mainVpc
+    Export:
+      Name: "infraVpc"
+  infraRoutingTable:
+    Description: Routing table used in subnets
+    Value: !Ref privateRoutingTable
+    Export:
+      Name: "infraRoutingTable"
+  privateSubnet1:
+    Description: The private subnet for use with Lambda functions requiring access to Marathon
+    Value: !Sub "${privateSubnet1}"
+    Export:
+      Name: "infraPrivateSubnet1"
+  privateSubnet2:
+    Description: The private subnet for use with Lambda functions requiring access to Marathon
+    Value: !Sub "${privateSubnet2}"
+    Export:
+      Name: "infraPrivateSubnet2"
+  privateSubnet3:
+    Description: The private subnet for use with Lambda functions requiring access to Marathon
+    Value: !Sub "${privateSubnet3}"
+    Export:
+      Name: "infraPrivateSubnet3"
+  defaultSecurityGroup:
+    Description: The default security group for the main VPC
+    Value: !GetAtt mainVpc.DefaultSecurityGroup
+    Export:
+      Name: "infraSecurityGroup"
